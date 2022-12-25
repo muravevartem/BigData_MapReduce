@@ -1,185 +1,183 @@
 package org.example;
 
-import java.io.DataInput;
-import java.io.DataOutput;
-import java.io.IOException;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.Set;
+import java.io.*;
+import java.util.*;
+import java.util.stream.Collectors;
+
+import org.apache.commons.lang3.RandomUtils;
 import org.apache.commons.text.StringTokenizer;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.io.DoubleWritable;
-import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.io.Writable;
-import org.apache.hadoop.io.WritableComparable;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
-import org.apache.hadoop.mapreduce.Mapper.Context;
 import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 
+import static java.lang.String.format;
+
 public class Main {
 
-  public static class MappingResult implements Writable {
+    public static class MapperResult implements Writable {
+        String route;
 
-    long countSymbols;
-    long countA;
-    long countB;
-    String word;
+        long interval;
 
-    public MappingResult() {
-    }
-
-    public MappingResult(long countSymbols, long countA, long countB, String word) {
-      this.countSymbols = countSymbols;
-      this.countA = countA;
-      this.countB = countB;
-      this.word = word;
-    }
-
-    @Override
-    public void write(DataOutput dataOutput) throws IOException {
-      dataOutput.writeLong(countSymbols);
-      dataOutput.writeLong(countA);
-      dataOutput.writeLong(countB);
-      dataOutput.writeChars(word);
-    }
-
-    @Override
-    public void readFields(DataInput dataInput) throws IOException {
-      this.countSymbols = dataInput.readLong();
-      this.countA = dataInput.readLong();
-      this.countB = dataInput.readLong();
-      this.word = dataInput.readLine();
-    }
-  }
-
-  public static class SMapper extends Mapper<Object, Text, Text, MappingResult> {
-
-    private static final Set<String> A = new HashSet<>(
-        Arrays.asList("А", "И", "О", "У", "Ы", "Э"));
-    private static final Set<String> B = new HashSet<>(
-        Arrays.asList("Б", "В", "Г", "Д", "Ж", "З", "Й", "К", "Л",
-            "М", "Н", "П", "Р", "С", "Т", "Ф", "Х", "Ц", "Ч", "Ш", "Щ"));
-
-    @Override
-    protected void map(Object key, Text value,
-        Mapper<Object, Text, Text, MappingResult>.Context context)
-        throws IOException, InterruptedException {
-      StringTokenizer itr = new StringTokenizer(value.toString(), " ");
-      while (itr.hasNext()) {
-        String word = itr.next()
-            .replace(".", "")
-            .replace(",", "")
-            .replace(":", "");
-
-        System.out.println("Hello");
-        if (!"".equals(word)) {
-          context.write(
-              new Text("Mapping result"),
-              new MappingResult(
-                  word.length(),
-                  Arrays.stream(word.split(""))
-                      .peek(System.out::println)
-                      .filter(s -> A.contains(s.toUpperCase()))
-                      .count(),
-                  Arrays.stream(word.split(""))
-                      .filter(s -> B.contains(s.toUpperCase()))
-                      .count(),
-                  word
-              ));
+        public MapperResult(String route, long interval) {
+            this.route = route;
+            this.interval = interval;
         }
-      }
-    }
-  }
 
-  public static class ReduceResult implements Writable{
-
-    double avgCount;
-    double avgA;
-    double avgB;
-    String maxString;
-
-    public ReduceResult(double avgCount, double avgA, double avgB, String maxString) {
-      this.avgCount = avgCount;
-      this.avgA = avgA;
-      this.avgB = avgB;
-      this.maxString = maxString;
-    }
-
-    public ReduceResult() {
-    }
-
-    @Override
-    public String toString() {
-      return "ReduceResult{" +
-          "avgCount=" + avgCount +
-          ", avgA=" + avgA +
-          ", avgB=" + avgB +
-          ", maxString='" + maxString + '\'' +
-          '}';
-    }
-
-    @Override
-    public void write(DataOutput dataOutput) throws IOException {
-      dataOutput.writeDouble(avgCount);
-      dataOutput.writeDouble(avgA);
-      dataOutput.writeDouble(avgB);
-      dataOutput.writeChars(maxString);
-    }
-
-    @Override
-    public void readFields(DataInput dataInput) throws IOException {
-      this.avgCount = dataInput.readDouble();
-      this.avgA = dataInput.readDouble();
-      this.avgB = dataInput.readDouble();
-      this.maxString = dataInput.readLine();
-    }
-  }
-
-  public static class SReducer extends Reducer<Text, MappingResult, Text, ReduceResult> {
-
-
-    @Override
-    protected void reduce(Text key, Iterable<MappingResult> values,
-        Reducer<Text, MappingResult, Text, ReduceResult>.Context context)
-        throws IOException, InterruptedException {
-      long count = 0;
-      long sumCount = 0;
-      long sumA = 0;
-      long sumB = 0;
-      String maxString = "";
-      for (MappingResult mappingResult : values) {
-        count++;
-        sumCount += mappingResult.countSymbols;
-        sumA += mappingResult.countA;
-        sumB += mappingResult.countB;
-        if (mappingResult.word.length() > maxString.length()) {
-          maxString = mappingResult.word;
+        public MapperResult() {
         }
-      }
-      System.out.println(sumA + " " + sumB);
-      context.write(new Text("Result"), new ReduceResult((double) sumCount / count,
-          (double) sumA / count, (double) sumB / count, maxString));
-    }
-  }
 
-  public static void main(String[] args) throws Exception {
-    Configuration conf = new Configuration();
-    Job job = Job.getInstance(conf, "job");
-    job.setJarByClass(Main.class);
-    job.setMapperClass(SMapper.class);
-    job.setReducerClass(SReducer.class);
-    job.setMapOutputKeyClass(Text.class);
-    job.setMapOutputValueClass(MappingResult.class);
-    job.setOutputKeyClass(Text.class);
-    job.setOutputValueClass(ReduceResult.class);
-    FileInputFormat.addInputPath(job, new Path(args[0]));
-    FileOutputFormat.setOutputPath(job, new Path(args[1]));
-    System.exit(job.waitForCompletion(true) ? 0 : 1);
-    System.out.println(Arrays.stream("АБВГ".split("")).filter(s -> Arrays.asList("А", "Б").contains(s)).count());
-  }
+        @Override
+        public String toString() {
+            return "MapperResult{" +
+                    "route='" + route + '\'' +
+                    ", interval=" + interval +
+                    '}';
+        }
+
+        @Override
+        public void write(DataOutput dataOutput) throws IOException {
+            dataOutput.writeLong(interval);
+            dataOutput.writeChars(route);
+        }
+
+        @Override
+        public void readFields(DataInput dataInput) throws IOException {
+            this.interval = dataInput.readLong();
+            this.route = dataInput.readLine();
+        }
+    }
+
+    public static class ReduceResult implements Writable, Comparable<ReduceResult> {
+
+        String route;
+
+        double interval;
+
+        public ReduceResult() {
+        }
+
+        public ReduceResult(String route, double interval) {
+            this.route = route;
+            this.interval = interval;
+        }
+
+        @Override
+        public void write(DataOutput dataOutput) throws IOException {
+            dataOutput.writeDouble(interval);
+            dataOutput.writeChars(route);
+        }
+
+        @Override
+        public void readFields(DataInput dataInput) throws IOException {
+            this.interval = dataInput.readDouble();
+            this.route = dataInput.readLine();
+        }
+
+        @Override
+        public String toString() {
+            return format("%s\t%s\n", route, interval);
+        }
+
+        @Override
+        public int compareTo(ReduceResult o) {
+            return Double.compare(this.interval, o.interval);
+        }
+    }
+
+    public static class SMapper extends Mapper<Object, Text, Text, MapperResult> {
+
+        @Override
+        protected void map(Object key, Text value,
+                           Mapper<Object, Text, Text, MapperResult>.Context context)
+                throws IOException, InterruptedException {
+            try {
+                String[] split = value.toString().split(";");
+
+                MapperResult mapperResult = new MapperResult(
+                        split[0],
+                        Long.parseLong(split[1])
+                );
+                System.out.println("OK");
+                System.out.println(mapperResult);
+
+                context.write(
+                        new Text("Result"),
+                        mapperResult
+                );
+
+            } catch (NumberFormatException e) {
+
+            }
+        }
+    }
+
+    public static class SReducer extends Reducer<Text, MapperResult, Text, String> {
+
+
+        @Override
+        protected void reduce(Text key, Iterable<MapperResult> values,
+                              Reducer<Text, MapperResult, Text, String>.Context context)
+                throws IOException, InterruptedException {
+
+            Map<String, Long> intervals = new HashMap<>();
+            Map<String, Long> count = new HashMap<>();
+
+            for (MapperResult mapperResult : values) {
+                long interval = intervals.getOrDefault(mapperResult.route, 0L) + mapperResult.interval;
+                intervals.put(mapperResult.route, interval);
+                long c = count.getOrDefault(mapperResult.route, 0L) + 1;
+                count.put(mapperResult.route, c);
+            }
+
+            System.out.println(values);
+
+            List<ReduceResult> collect = intervals.keySet().stream()
+                    .map(route -> new ReduceResult(route, (double) intervals.get(route) / count.get(route)))
+                    .sorted()
+                    .collect(Collectors.toList());
+
+            String result = collect.stream()
+                    .map(ReduceResult::toString)
+                    .collect(Collectors.joining());
+
+            context.write(
+                    new Text("Result"),
+                    result
+            );
+        }
+
+    }
+
+    public static void main(String[] args) throws Exception {
+
+        class Data {
+            String route;
+            Long interval;
+
+            public Data(String route, Long interval) {
+                this.route = route;
+                this.interval = interval;
+            }
+        }
+        Configuration conf = new Configuration();
+        System.out.println("start");
+        Job job = Job.getInstance(conf, "job");
+        job.setJarByClass(Main.class);
+        job.setMapperClass(SMapper.class);
+        job.setReducerClass(SReducer.class);
+        job.setMapOutputKeyClass(Text.class);
+        job.setMapOutputValueClass(MapperResult.class);
+        job.setOutputKeyClass(Text.class);
+        job.setOutputValueClass(String.class);
+        FileInputFormat.addInputPath(job, new Path(args[0]));
+        FileOutputFormat.setOutputPath(job, new Path(args[1]));
+        System.exit(job.waitForCompletion(true) ? 0 : 1);
+    }
 }
